@@ -1,0 +1,72 @@
+[
+  {
+    "id": "s1",
+    "name": "Govt School Dwarka",
+    "lat": 28.5921,
+    "lon": 77.046,
+    "type": "school"
+  },
+  {
+    "id": "s2",
+    "name": "Govt School Rohini",
+    "lat": 28.7041,
+    "lon": 77.1025,
+    "type": "school"
+  },
+  {
+    "id": "s3",
+    "name": "Govt School Gurgaon",
+    "lat": 28.4595,
+    "lon": 77.0266,
+    "type": "school"
+  },
+  {
+    "id": "s4",
+    "name": "Govt School Noida",
+    "lat": 28.5355,
+    "lon": 77.391,
+    "type": "school"
+  },
+  {
+    "id": "s5",
+    "name": "Govt School Faridabad",
+    "lat": 28.4089,
+    "lon": 77.3178,
+    "type": "school"
+  },
+  {
+    "id": "h1",
+    "name": "AIIMS Trauma Centre",
+    "lat": 28.5672,
+    "lon": 77.21,
+    "type": "hospital"
+  },
+  {
+    "id": "h2",
+    "name": "Safdarjung Hospital",
+    "lat": 28.5623,
+    "lon": 77.2095,
+    "type": "hospital"
+  },
+  {
+    "id": "h3",
+    "name": "Medanta Gurgaon",
+    "lat": 28.4479,
+    "lon": 77.0543,
+    "type": "hospital"
+  },
+  {
+    "id": "h4",
+    "name": "Fortis Noida",
+    "lat": 28.5497,
+    "lon": 77.3335,
+    "type": "hospital"
+  },
+  {
+    "id": "h5",
+    "name": "Asian Hospital Faridabad",
+    "lat": 28.4312,
+    "lon": 77.2987,
+    "type": "hospital"
+  }
+]

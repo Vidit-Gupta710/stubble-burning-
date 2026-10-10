@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stubble Burning Early Warning - Dashboard</title>
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; height: 100vh; display: flex; }
+        #map { flex: 1; min-width: 0; }
+        .sidebar { width: 380px; background: white; border-left: 1px solid #e2e8f0; overflow-y: auto; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 20px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+        .sidebar-header h1 { font-size: 18px; font-weight: 700; color: #1e293b; }
+        .sidebar-header p { font-size: 13px; color: #64748b; margin-top: 4px; }
+        .panel { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; }
+        .panel h2 { font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .fire-cluster { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+        .fire-cluster:last-child { border-bottom: none; }
+        .cluster-info { display: flex; flex-direction: column; }
+        .cluster-loc { font-weight: 500; color: #1e293b; }
+        .cluster-meta { font-size: 11px; color: #64748b; }
+        .cluster-frp { font-weight: 600; color: #dc2626; }
+        .site-alert { display: flex; align-items: center; gap: 10px; padding: 10px; background: #fef3f2; border-radius: 8px; margin-bottom: 8px; }
+        .site-alert.emergency { background: #fef2f2; border-left: 3px solid #dc2626; }
+        .site-alert.warning { background: #fffbeb; border-left: 3px solid #f59e0b; }
+        .site-alert.watch { background: #f0fdf4; border-left: 3px solid #10b981; }
+        .alert-badge { padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+        .alert-badge.emergency { background: #dc2626; color: white; }
+        .alert-badge.warning { background: #f59e0b; color: white; }
+        .alert-badge.watch { background: #10b981; color: white; }
+        .site-name { font-weight: 500; font-size: 13px; color: #1e293b; }
+        .site-meta { font-size: 11px; color: #64748b; }
+        .site-lead { font-size: 11px; font-weight: 600; color: #dc2626; }
+        .controls { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; }
+        .control-row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+        .control-row label { font-size: 12px; color: #475569; min-width: 80px; }
+        .control-row input[type="range"] { flex: 1; }
+        .control-row select { flex: 1; padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; background: white; }
+        .play-btn { padding: 8px 16px; background: #1e293b; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .play-btn:hover { background: #334155; }
+        .play-btn.playing { background: #dc2626; }
+        .legend { display: flex; gap: 16px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #475569; }
+        .legend-color { width: 16px; height: 16px; border-radius: 4px; }
+        .impact-bar { display: flex; gap: 8px; }
+        .impact-item { flex: 1; text-align: center; padding: 12px; background: #f8fafc; border-radius: 8px; }
+        .impact-value { font-size: 24px; font-weight: 700; color: #1e293b; }
+        .impact-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+        .wind-indicator { display: flex; align-items: center; gap: 12px; padding: 12px; background: #f0f9ff; border-radius: 8px; margin-bottom: 16px; }
+        .wind-arrow { font-size: 24px; color: #0369a1; }
+        .wind-info { font-size: 13px; color: #0369a1; }
+        @media (max-width: 768px) { body { flex-direction: column; } .sidebar { width: 100%; max-height: 50vh; } }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>🔥 Early Warning Dashboard</h1>
+            <p>Punjab/Haryana/Delhi-NCR Smoke Exposure</p>
+        </div>
+        
+        <div class="controls">
+            <div class="control-row">
+                <label>Time</label>
+                <input type="range" id="timeSlider" min="0" max="16" value="0" step="1">
+                <span id="timeLabel" style="min-width: 60px;">0h</span>
+            </div>
+            <div class="control-row">
+                <label>Speed</label>
+                <select id="speedSelect">
+                    <option value="1">1x</option>
+                    <option value="2">2x</option>
+                    <option value="5">5x</option>
+                    <option value="10">10x</option>
+                </select>
+            </div>
+            <button class="play-btn" id="playBtn" onclick="togglePlay()">▶ Play</button>
+        </div>
+
+        <div class="wind-indicator" id="windIndicator">
+            <span class="wind-arrow" id="windArrow">→</span>
+            <div class="wind-info" id="windInfo">Loading...</div>
+        </div>
+
+        <div class="panel">
+            <h2>🔥 Fire Clusters</h2>
+            <div id="fireClusters"></div>
+        </div>
+
+        <div class="panel">
+            <h2>🚨 Active Alerts</h2>
+            <div id="siteAlerts"></div>
+        </div>
+
+        <div class="panel">
+            <h2>📊 Impact Counters</h2>
+            <div class="impact-bar">
+                <div class="impact-item">
+                    <div class="impact-value" id="popExposed">12.5M</div>
+                    <div class="impact-label">Population</div>
+                </div>
+                <div class="impact-item">
+                    <div class="impact-value" id="sitesAlerted">8</div>
+                    <div class="impact-label">Sites</div>
+                </div>
+                <div class="impact-item">
+                    <div class="impact-value" id="avgLead">11.9h</div>
+                    <div class="impact-label">Lead Time</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>🗺️ Map Legend</h2>
+            <div class="legend">
+                <div class="legend-item"><span class="legend-color" style="background: #dc2626;"></span> EMERGENCY</div>
+                <div class="legend-item"><span class="legend-color" style="background: #f59e0b;"></span> WARNING</div>
+                <div class="legend-item"><span class="legend-color" style="background: #10b981;"></span> WATCH</div>
+                <div class="legend-item"><span class="legend-color" style="background: #ef4444;"></span> Fire</div>
+                <div class="legend-item"><span class="legend-color" style="background: #3b82f6;"></span> School</div>
+                <div class="legend-item"><span class="legend-color" style="background: #ec4899;"></span> Hospital</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Embedded demo data
+        const DEMO_DATA = {
+            fires: [],
+            winds: [],
+            sites: [],
+            grid: [],
+            clusters: []
+        };
+
+        // Load data from JSON files
+        async function loadData() {
+            try {
+                const [fires, winds, sites, grid] = await Promise.all([
+                    fetch('data/mock_fires.json').then(r => r.json()),
+                    fetch('data/mock_wind.json').then(r => r.json()),
+                    fetch('data/mock_sites.json').then(r => r.json()),
+                    fetch('data/mock_grid.json').then(r => r.json()),
+                ]);
+                DEMO_DATA.fires = fires;
+                DEMO_DATA.winds = winds;
+                DEMO_DATA.sites = sites;
+                DEMO_DATA.grid = grid;
+                computeClusters();
+                initMap();
+                updateFrame(0);
+                startAutoPlay();
+            } catch (e) {
+                console.error('Failed to load data:', e);
+                document.getElementById('fireClusters').innerHTML = '<p style="color:red">Failed to load data. Run python -m scripts.generate_mock first.</p>';
+            }
+        }
+
+        function computeClusters() {
+            const fires = DEMO_DATA.fires;
+            if (!fires.length) return;
+            const radius = 25; // km
+            const used = new Array(fires.length).fill(false);
+            const clusters = [];
+            
+            for (let i = 0; i < fires.length; i++) {
+                if (used[i]) continue;
+                const cluster = [];
+                for (let j = 0; j < fires.length; j++) {
+                    const d = haversine(fires[i].lat, fires[i].lon, fires[j].lat, fires[j].lon);
+                    if (d <= radius) {
+                        cluster.push(j);
+                        used[j] = true;
+                    }
+                }
+                if (cluster.length) {
+                    let totalFRP = 0, maxFRP = 0, sumLat = 0, sumLon = 0;
+                    for (const idx of cluster) {
+                        totalFRP += fires[idx].frp;
+                        maxFRP = Math.max(maxFRP, fires[idx].frp);
+                        sumLat += fires[idx].lat;
+                        sumLon += fires[idx].lon;
+                    }
+                    clusters.push({
+                        center_lat: sumLat / cluster.length,
+                        center_lon: sumLon / cluster.length,
+                        count: cluster.length,
+                        total_frp: totalFRP,
+                        max_frp: maxFRP,
+                    });
+                }
+            }
+            clusters.sort((a, b) => b.total_frp - a.total_frp);
+            DEMO_DATA.clusters = clusters.slice(0, 10);
+        }
+
+        function haversine(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+            return 2 * R * Math.asin(Math.sqrt(a));
+        }
+
+        function bearing(lat1, lon1, lat2, lon2) {
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const lat1r = lat1 * Math.PI / 180;
+            const lat2r = lat2 * Math.PI / 180;
+            const y = Math.sin(dLon) * Math.cos(lat2r);
+            const x = Math.cos(lat1r) * Math.sin(lat2r) - Math.sin(lat1r) * Math.cos(lat2r) * Math.cos(dLon);
+            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        }
+
+        function angularDiff(b1, b2) {
+            const diff = Math.abs(b1 - b2) % 360;
+            return Math.min(diff, 360 - diff);
+        }
+
+        function computeExposure(fires, wind, grid) {
+            const SIGMA = 25, A = 0.5, B = 0.3;
+            const REACH_FACTOR = 0.6, REACH_SPREAD = 0.4, REACH_OFFSET = 15;
+            const BLH_REF = 1500, WS_REF = 10;
+            const HORIZON = 48;
+            
+            const reach = wind.speed_kmh * HORIZON;
+            const windTo = (wind.dir_deg + 180) % 360;
+            
+            return grid.map(cell => {
+                let totalScore = 0;
+                for (const fire of fires) {
+                    const d = haversine(fire.lat, fire.lon, cell.lat, cell.lon);
+                    const b = bearing(fire.lat, fire.lon, cell.lat, cell.lon);
+                    const dtheta = angularDiff(b, windTo);
+                    
+                    const K_dir = Math.exp(-(dtheta**2) / (2 * SIGMA**2));
+                    const peakDist = REACH_FACTOR * reach;
+                    const spread = REACH_SPREAD * reach + REACH_OFFSET;
+                    const K_dist = Math.exp(-((d - peakDist)**2) / (2 * spread**2));
+                    const K_mix = (1 + A * (1 - Math.min(wind.blh_m, BLH_REF) / BLH_REF)) * 
+                                 (1 + B * (1 - Math.min(wind.speed_kmh, WS_REF) / WS_REF));
+                    
+                    totalScore += fire.frp * (fire.confidence / 100) * K_dir * K_dist * K_mix;
+                }
+                let tier = 'NONE';
+                if (totalScore >= 1500) tier = 'EMERGENCY';
+                else if (totalScore >= 500) tier = 'WARNING';
+                else if (totalScore >= 100) tier = 'WATCH';
+                return { ...cell, score: totalScore, tier };
+            });
+        }
+
+        function estimateLead(site, fires, wind) {
+            if (!fires.length) return 0;
+            const dists = fires.map(f => haversine(site.lat, site.lon, f.lat, f.lon)).filter(d => d > 0);
+            if (!dists.length) return 0;
+            return Math.min(...dists) / wind.speed_kmh;
+        }
+
+        let map, fireLayer, gridLayer, siteLayer;
+        let currentHour = 0;
+        let playing = false;
+        let playInterval;
+
+        function initMap() {
+            map = new maplibregl.Map({
+                container: 'map',
+                style: 'https://demotiles.maplibre.org/style.json',
+                center: [77.0, 28.7],
+                zoom: 6.5,
+            });
+            
+            map.on('load', () => {
+                // Fire clusters
+                map.addSource('fires', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }});
+                map.addLayer({
+                    id: 'fire-clusters',
+                    type: 'circle',
+                    source: 'fires',
+                    paint: {
+                        'circle-radius': ['interpolate', ['linear'], ['get', 'total_frp'], 50, 8, 500, 24],
+                        'circle-color': '#ef4444',
+                        'circle-opacity': 0.8,
+                        'circle-stroke-width': 2,
+                        'circle-stroke-color': '#fff',
+                    }
+                });
+                
+                // Grid cells (exposure)
+                map.addSource('grid', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }});
+                map.addLayer({
+                    id: 'exposure-grid',
+                    type: 'circle',
+                    source: 'grid',
+                    paint: {
+                        'circle-radius': 6,
+                        'circle-color': [
+                            'interpolate', ['linear'], ['get', 'score'],
+                            100, '#10b981',
+                            500, '#f59e0b',
+                            1500, '#dc2626'
+                        ],
+                        'circle-opacity': 0.6,
+                    },
+                    filter: ['>', ['get', 'score'], 50]
+                });
+                
+                // Sites
+                map.addSource('sites', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }});
+                map.addLayer({
+                    id: 'sites',
+                    type: 'circle',
+                    source: 'sites',
+                    paint: {
+                        'circle-radius': 10,
+                        'circle-color': ['case',
+                            ['==', ['get', 'type'], 'school'], '#3b82f6',
+                            ['==', ['get', 'type'], 'hospital'], '#ec4899',
+                            '#6b7280'
+                        ],
+                        'circle-stroke-width': 3,
+                        'circle-stroke-color': '#fff',
+                    }
+                });
+                
+                map.addLayer({
+                    id: 'site-labels',
+                    type: 'symbol',
+                    source: 'sites',
+                    layout: {
+                        'text-field': ['get', 'name'],
+                        'text-size': 11,
+                        'text-offset': [0, 1.5],
+                        'text-anchor': 'top',
+                        'text-allow-overlap': true,
+                    },
+                    paint: { 'text-color': '#1e293b', 'text-halo-color': '#fff', 'text-halo-width': 1 }
+                });
+            });
+        }
+
+        function updateMapData(hour) {
+            const wind = DEMO_DATA.winds[hour];
+            const gridResults = computeExposure(DEMO_DATA.fires, wind, DEMO_DATA.grid);
+            
+            // Update fire clusters
+            map.getSource('fires').setData({
+                type: 'FeatureCollection',
+                features: DEMO_DATA.clusters.map(c => ({
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [c.center_lon, c.center_lat] },
+                    properties: { ...c }
+                }))
+            });
+            
+            // Update grid
+            map.getSource('grid').setData({
+                type: 'FeatureCollection',
+                features: gridResults
+                    .filter(c => c.score > 50)
+                    .map(c => ({
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
+                        properties: { score: c.score, tier: c.tier }
+                    }))
+            });
+            
+            // Update sites with exposure
+            const siteResults = DEMO_DATA.sites.map(site => {
+                const cell = { lat: site.lat, lon: site.lon };
+                const res = computeExposure(DEMO_DATA.fires, wind, [cell])[0];
+                return { ...site, score: res.score, tier: res.tier, lead: estimateLead(site, DEMO_DATA.fires, wind) };
+            });
+            
+            map.getSource('sites').setData({
+                type: 'FeatureCollection',
+                features: siteResults.map(s => ({
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
+                    properties: { name: s.name, type: s.type, score: s.score, tier: s.tier, lead: s.lead }
+                }))
+            });
+            
+            return { wind, gridResults, siteResults };
+        }
+
+        function updateFrame(hour) {
+            currentHour = hour;
+            const { wind, gridResults, siteResults } = updateMapData(hour);
+            
+            // Update UI
+            document.getElementById('timeLabel').textContent = `${hour * 3}h`;
+            document.getElementById('timeSlider').value = hour;
+            
+            // Wind indicator
+            const arrow = '←↖↑↗→↘↓↙'[Math.round(wind.dir_deg / 45) % 8];
+            document.getElementById('windArrow').textContent = arrow;
+            document.getElementById('windInfo').innerHTML = 
+                `<strong>${wind.dir_deg}°</strong> @ <strong>${wind.speed_kmh} km/h</strong>, BLH <strong>${wind.blh_m}m</strong>`;
+            
+            // Fire clusters
+            const clustersHtml = DEMO_DATA.clusters.slice(0, 5).map((c, i) => `
+                <div class="fire-cluster">
+                    <div class="cluster-info">
+                        <span class="cluster-loc">#${i+1} ${c.center_lat.toFixed(2)}, ${c.center_lon.toFixed(2)}</span>
+                        <span class="cluster-meta">${c.count} fires • max ${c.max_frp.toFixed(0)} MW</span>
+                    </div>
+                    <span class="cluster-frp">${c.total_frp.toFixed(0)} MW</span>
+                </div>
+            `).join('');
+            document.getElementById('fireClusters').innerHTML = clustersHtml;
+            
+            // Site alerts
+            const alertSites = siteResults
+                .filter(s => s.tier !== 'NONE')
+                .sort((a, b) => b.score - a.score);
+            
+            const alertsHtml = alertSites.map(s => `
+                <div class="site-alert ${s.tier.toLowerCase()}">
+                    <span class="alert-badge ${s.tier.toLowerCase()}">${s.tier}</span>
+                    <div>
+                        <div class="site-name">${s.name}</div>
+                        <div class="site-meta">${s.type} • Score: ${s.score.toFixed(0)}</div>
+                    </div>
+                    <span class="site-lead">~${s.lead.toFixed(0)}h lead</span>
+                </div>
+            `).join('');
+            document.getElementById('siteAlerts').innerHTML = alertsHtml || '<p style="color:#64748b">No active alerts</p>';
+            
+            // Impact counters
+            const warned = alertSites.length;
+            const schools = alertSites.filter(s => s.type === 'school').length;
+            const hospitals = alertSites.filter(s => s.type === 'hospital').length;
+            const avgLead = alertSites.length ? alertSites.reduce((a, s) => a + s.lead, 0) / alertSites.length : 0;
+            const maxScore = Math.max(...gridResults.map(c => c.score), 0);
+            
+            document.getElementById('sitesAlerted').textContent = warned;
+            document.getElementById('avgLead').textContent = avgLead.toFixed(1) + 'h';
+        }
+
+        function togglePlay() {
+            playing = !playing;
+            const btn = document.getElementById('playBtn');
+            btn.textContent = playing ? '⏸ Pause' : '▶ Play';
+            btn.classList.toggle('playing', playing);
+            
+            if (playing) {
+                const speed = parseInt(document.getElementById('speedSelect').value);
+                playInterval = setInterval(() => {
+                    currentHour = (currentHour + 1) % DEMO_DATA.winds.length;
+                    updateFrame(currentHour);
+                }, 1000 / speed);
+            } else {
+                clearInterval(playInterval);
+            }
+        }
+
+        function startAutoPlay() {
+            document.getElementById('timeSlider').addEventListener('input', (e) => {
+                updateFrame(parseInt(e.target.value));
+            });
+            document.getElementById('speedSelect').addEventListener('change', () => {
+                if (playing) { togglePlay(); togglePlay(); }
+            });
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
