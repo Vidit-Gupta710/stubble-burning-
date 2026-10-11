@@ -1,17 +1,20 @@
 """
 NASA FIRMS API Client - fetches fire hotspots for Punjab/Haryana/Delhi-NCR
 """
-import os
+
 import csv
-import requests
-from io import StringIO
-from typing import List
+import os
 from datetime import datetime, timedelta
+from io import StringIO
 from pathlib import Path
 
-from core.models import Fire
-from core.config import GRID_LAT_MIN, GRID_LAT_MAX, GRID_LON_MIN, GRID_LON_MAX
+import requests
+from dotenv import load_dotenv
 
+load_dotenv()
+
+from core.config import GRID_LAT_MAX, GRID_LAT_MIN, GRID_LON_MAX, GRID_LON_MIN
+from core.models import Fire
 
 FIRMS_BASE_URL = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
 DEFAULT_MAP_KEY = os.getenv("FIRMS_MAP_KEY", "cd5d20415e3dca1283b1811765b32d09")
@@ -27,14 +30,16 @@ def build_firms_url(
     source: str = "VIIRS_SNPP_NRT",
     bbox: str = DEFAULT_BBOX,
     day_range: int = DEFAULT_DAY_RANGE,
-    date: str = None,
+    date: str | None = None,
 ) -> str:
     if date is None:
         date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
     return f"{FIRMS_BASE_URL}/{map_key}/{source}/{bbox}/{day_range}/{date}"
 
 
-FIRMS_API_KEY = os.getenv("FIRMS_API_KEY", "723f4dc04f8e7f0664f92f8aa6baf2dd44b505632fcdb4fece2bef0af9994038")
+FIRMS_API_KEY = os.getenv(
+    "FIRMS_API_KEY", "723f4dc04f8e7f0664f92f8aa6baf2dd44b505632fcdb4fece2bef0af9994038"
+)
 
 
 def fetch_firms_csv(url: str) -> str:
@@ -44,18 +49,21 @@ def fetch_firms_csv(url: str) -> str:
     return response.text
 
 
-def parse_firms_csv(csv_text: str) -> List[Fire]:
+def parse_firms_csv(csv_text: str) -> list[Fire]:
     fires = []
     reader = csv.DictReader(StringIO(csv_text))
     for row in reader:
         try:
             lat = float(row["latitude"])
             lon = float(row["longitude"])
-            
+
             # Filter to our region of interest
-            if not (GRID_LAT_MIN <= lat <= GRID_LAT_MAX and GRID_LON_MIN <= lon <= GRID_LON_MAX):
+            if not (
+                GRID_LAT_MIN <= lat <= GRID_LAT_MAX
+                and GRID_LON_MIN <= lon <= GRID_LON_MAX
+            ):
                 continue
-            
+
             frp = float(row.get("frp", 0) or 0)
             conf_raw = row.get("confidence", "0")
             # Handle confidence: "n" (nominal), "h" (high), "l" (low), or numeric
@@ -65,7 +73,7 @@ def parse_firms_csv(csv_text: str) -> List[Fire]:
                 confidence = 30
             else:
                 confidence = int(float(conf_raw))
-            
+
             if frp > 0 and confidence >= 30:
                 fires.append(Fire(lat=lat, lon=lon, frp=frp, confidence=confidence))
         except (ValueError, KeyError):
@@ -74,15 +82,15 @@ def parse_firms_csv(csv_text: str) -> List[Fire]:
 
 
 def fetch_fires(
-    date: str = None,
-    sources: List[str] = None,
-    map_key: str = None,
-) -> List[Fire]:
+    date: str | None = None,
+    sources: list[str] | None = None,
+    map_key: str | None = None,
+) -> list[Fire]:
     if sources is None:
         sources = DEFAULT_SOURCES
     if map_key is None:
         map_key = DEFAULT_MAP_KEY
-    
+
     all_fires = []
     for source in sources:
         url = build_firms_url(map_key=map_key, source=source, date=date)
@@ -93,7 +101,7 @@ def fetch_fires(
             print(f"  {source}: {len(fires)} fires")
         except requests.RequestException as e:
             print(f"  {source} failed: {e}")
-    
+
     # Deduplicate by location (within ~1km)
     unique_fires = []
     for fire in all_fires:
@@ -107,7 +115,7 @@ def fetch_fires(
                 break
         if not is_dup:
             unique_fires.append(fire)
-    
+
     return unique_fires
 
 
@@ -120,7 +128,7 @@ def save_raw_csv(csv_text: str, source: str, date: str):
 def main():
     date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
     print(f"Fetching FIRMS data for {date}...")
-    
+
     all_fires = []
     for source in DEFAULT_SOURCES:
         url = build_firms_url(source=source, date=date)
@@ -132,7 +140,7 @@ def main():
             print(f"  {source}: {len(fires)} fires in region")
         except Exception as e:
             print(f"  {source} error: {e}")
-    
+
     # Deduplicate
     unique = []
     for fire in all_fires:
@@ -146,9 +154,10 @@ def main():
                 break
         if not dup:
             unique.append(fire)
-    
+
     # Save to mock_fires.json format for compatibility
     import json
+
     out_path = DATA_DIR / "mock_fires.json"
     out_path.write_text(json.dumps([f.model_dump() for f in unique], indent=2))
     print(f"\nTotal unique fires: {len(unique)}")

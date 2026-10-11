@@ -1,18 +1,23 @@
 """
 OpenAQ v3 API Client - fetches PM2.5 data for stations in Punjab/Haryana/Delhi-NCR
 """
+
 import os
-import requests
-from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from core.models import Site
-from core.config import GRID_LAT_MIN, GRID_LAT_MAX, GRID_LON_MIN, GRID_LON_MAX
+import requests
+from dotenv import load_dotenv
 
+load_dotenv()
+
+from core.config import GRID_LAT_MAX, GRID_LAT_MIN, GRID_LON_MAX, GRID_LON_MIN
+from core.models import Site
 
 OPENAQ_BASE_URL = "https://api.openaq.org/v3"
-OPENAQ_API_KEY = os.getenv("OPENAQ_API_KEY", "723f4dc04f8e7f0664f92f8aa6baf2dd44b505632fcdb4fece2bef0af9994038")
+OPENAQ_API_KEY = os.getenv(
+    "OPENAQ_API_KEY", "723f4dc04f8e7f0664f92f8aa6baf2dd44b505632fcdb4fece2bef0af9994038"
+)
 DATA_DIR = Path(__file__).parent.parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -34,7 +39,7 @@ def get_headers() -> dict:
     return {"X-API-Key": OPENAQ_API_KEY} if OPENAQ_API_KEY else {}
 
 
-def fetch_stations() -> List[Site]:
+def fetch_stations() -> list[Site]:
     """Get all stations in the region."""
     url = f"{OPENAQ_BASE_URL}/locations"
     params = {
@@ -45,20 +50,27 @@ def fetch_stations() -> List[Site]:
     response = requests.get(url, headers=get_headers(), params=params, timeout=30)
     response.raise_for_status()
     data = response.json()
-    
+
     stations = []
     for loc in data.get("results", []):
         coords = loc.get("coordinates", {})
         lat = coords.get("latitude")
         lon = coords.get("longitude")
-        if lat and lon and GRID_LAT_MIN <= lat <= GRID_LAT_MAX and GRID_LON_MIN <= lon <= GRID_LON_MAX:
-            stations.append(Site(
-                id=f"openaq_{loc['id']}",
-                name=loc.get("name", f"Station {loc['id']}"),
-                lat=lat,
-                lon=lon,
-                type="station",
-            ))
+        if (
+            lat
+            and lon
+            and GRID_LAT_MIN <= lat <= GRID_LAT_MAX
+            and GRID_LON_MIN <= lon <= GRID_LON_MAX
+        ):
+            stations.append(
+                Site(
+                    id=f"openaq_{loc['id']}",
+                    name=loc.get("name", f"Station {loc['id']}"),
+                    lat=lat,
+                    lon=lon,
+                    type="station",
+                )
+            )
     return stations
 
 
@@ -66,7 +78,7 @@ def fetch_pm25_series(
     station_id: str,
     start_date: str,
     end_date: str,
-) -> List[Dict]:
+) -> list[dict]:
     """Fetch PM2.5 measurements for a station over a date range."""
     url = f"{OPENAQ_BASE_URL}/locations/{station_id}/measurements"
     params = {
@@ -78,23 +90,25 @@ def fetch_pm25_series(
     response = requests.get(url, headers=get_headers(), params=params, timeout=30)
     response.raise_for_status()
     data = response.json()
-    
+
     results = []
     for m in data.get("results", []):
-        results.append({
-            "timestamp": m.get("period", {}).get("datetimeFrom", {}).get("utc"),
-            "value": m.get("value"),
-            "unit": m.get("unit"),
-        })
+        results.append(
+            {
+                "timestamp": m.get("period", {}).get("datetimeFrom", {}).get("utc"),
+                "value": m.get("value"),
+                "unit": m.get("unit"),
+            }
+        )
     return results
 
 
-def fetch_latest_pm25(stations: List[Site]) -> Dict[str, float]:
+def fetch_latest_pm25(stations: list[Site]) -> dict[str, float]:
     """Get latest PM2.5 value for each station."""
     latest = {}
     end = datetime.utcnow().strftime("%Y-%m-%d")
     start = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d")
-    
+
     for station in stations:
         try:
             # Extract numeric ID from our station ID
@@ -111,15 +125,17 @@ def fetch_latest_pm25(stations: List[Site]) -> Dict[str, float]:
     return latest
 
 
-def save_stations_json(stations: List[Site], filename: str = "openaq_stations.json"):
+def save_stations_json(stations: list[Site], filename: str = "openaq_stations.json"):
     import json
+
     filepath = DATA_DIR / filename
     filepath.write_text(json.dumps([s.model_dump() for s in stations], indent=2))
     print(f"Saved {len(stations)} stations to {filepath}")
 
 
-def save_pm25_json(data: Dict, filename: str = "openaq_pm25.json"):
+def save_pm25_json(data: dict, filename: str = "openaq_pm25.json"):
     import json
+
     filepath = DATA_DIR / filename
     filepath.write_text(json.dumps(data, indent=2))
     print(f"Saved PM2.5 data to {filepath}")
@@ -130,7 +146,7 @@ def main():
     stations = fetch_stations()
     print(f"Found {len(stations)} stations with PM2.5")
     save_stations_json(stations)
-    
+
     print("Fetching latest PM2.5 measurements...")
     pm25 = fetch_latest_pm25(stations)
     print(f"Got PM2.5 for {len(pm25)} stations")
